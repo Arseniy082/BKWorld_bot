@@ -1,82 +1,78 @@
-import 'dotenv/config';
-import axios from 'axios';
-import * as cheerio from 'cheerio';
-import { Telegraf } from 'telegraf';
+import TelegramBot from "node-telegram-bot-api";
+import axios from "axios";
+import * as cheerio from "cheerio";
+import dotenv from "dotenv";
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const CLAN_URL = process.env.CLAN_URL;
-const bot = new Telegraf(BOT_TOKEN);
+dotenv.config();
 
-// ===== Функция: извлечение ников с сайта =====
-async function fetchNicknames(url) {
+const token = process.env.TELEGRAM_BOT_TOKEN;
+const url = process.env.CLAN_URL;
+
+if (!token || !url) {
+  console.error("❌ Не указан TELEGRAM_BOT_TOKEN или CLAN_URL в .env");
+  process.exit(1);
+}
+
+const bot = new TelegramBot(token, { polling: true });
+
+// Функция для получения списка ников
+async function getPlayerNames() {
   try {
     const { data } = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ClanStatusBot/1.0)',
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.1 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept":
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
     });
 
     const $ = cheerio.load(data);
-    const nicknames = [];
 
-    // Ищем все ссылки на игроков (с /player/ в href)
-    $('a[href*="/player/"]').each((i, el) => {
-      const nick = $(el).text().trim();
-
-      // Убираем мусорные строки
-      if (
-        nick &&
-        nick.length > 1 &&
-        !nick.toLowerCase().includes('player') &&
-        !nick.toLowerCase().includes('list') &&
-        !/[^a-zA-Zа-яА-Я0-9_\-]/.test(nick) // только никнеймы (буквы, цифры, - и _)
-      ) {
-        nicknames.push(nick);
+    // Находим все ссылки на игроков
+    const names = [];
+    $("a[href^='/player/']").each((i, el) => {
+      const name = $(el).text().trim();
+      if (name && !/player list/i.test(name)) {
+        names.push(name);
       }
     });
 
-    // Удаляем дубликаты
-    const unique = Array.from(new Set(nicknames));
-
-    // Если случайно всё равно осталось что-то вроде "Player list" — выкидываем
-    return unique.filter((n) => !/player/i.test(n) && !/list/i.test(n));
+    return names;
   } catch (err) {
-    console.error('Ошибка при загрузке:', err.message);
-    return [];
+    console.error("Ошибка при запросе:", err.message);
+    return null;
   }
 }
 
-// ===== Команды Telegram =====
+// Обработка команды /start
+bot.onText(/\/start/, async (msg) => {
+  const chatId = msg.chat.id;
+  await bot.sendMessage(chatId, "👋 Привет! Отправь /check чтобы проверить игроков.");
+});
 
-// /start
-bot.start((ctx) =>
-  ctx.reply(
-    `👋 Привет, ${ctx.from.first_name}!\n` +
-    `Этот бот показывает список игроков из клана BKW.\n\n` +
-    `Используй команду /check чтобы получить список.`
-  )
-);
+// Обработка команды /check
+bot.onText(/\/check/, async (msg) => {
+  const chatId = msg.chat.id;
+  await bot.sendMessage(chatId, "⏳ Проверяю сайт...");
 
-// /check
-bot.command('check', async (ctx) => {
-  await ctx.reply('⏳ Проверяю сайт...');
+  const names = await getPlayerNames();
 
-  const nicknames = await fetchNicknames(CLAN_URL);
-
-  if (nicknames.length === 0) {
-    await ctx.reply('⚠️ Не удалось получить список игроков (возможно, сайт недоступен).');
-  } else {
-    const time = new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
-    await ctx.reply(
-      `🎮 Найдено ${nicknames.length} ник(ов):\n\n${nicknames.join('\n')}\n\n🕒 Проверено: ${time}`
+  if (!names) {
+    await bot.sendMessage(
+      chatId,
+      "⚠️ Не удалось получить список игроков (возможно, сайт недоступен)."
     );
+    return;
+  }
+
+  if (names.length === 0) {
+    await bot.sendMessage(chatId, "😕 Игроков не найдено.");
+  } else {
+    const text = names.map((n, i) => `${i + 1}. ${n}`).join("\n");
+    await bot.sendMessage(chatId, `🎮 Найдено ${names.length} ник(ов):\n\n${text}`);
   }
 });
 
-// ===== Запуск бота =====
-bot.launch();
-console.log('✅ Бот запущен и готов к работе.');
-
-// ===== Остановка при выходе =====
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+console.log("✅ Бот запущен и ждёт команд в Telegram...");
