@@ -1,7 +1,11 @@
-const TelegramBot = require("node-telegram-bot-api");
-const axios = require("axios");
-const cheerio = require("cheerio");
-require("dotenv").config();
+import TelegramBot from "node-telegram-bot-api";
+import axios from "axios";
+import cheerio from "cheerio";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+dotenv.config();
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const clanUrl = process.env.CLAN_URL;
@@ -12,29 +16,26 @@ if (!token || !clanUrl) {
 }
 
 const bot = new TelegramBot(token, { polling: true });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // ============================
-// 📋 Получение списка игроков
+// 📋 Получение списка игроков (онлайн)
 // ============================
-async function getPlayerNames() {
+async function getOnlinePlayers() {
   try {
-    const { data } = await axios.get(clanUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.1 Safari/537.36",
-      },
-    });
-
+    const { data } = await axios.get(clanUrl);
     const $ = cheerio.load(data);
     const names = [];
-    $("a[href^='/player/']").each((i, el) => {
+
+    $("a[href^='/player/']").each((_, el) => {
       const name = $(el).text().trim();
       if (name && !/player list/i.test(name)) names.push(name);
     });
 
     return names;
   } catch (err) {
-    console.error("Ошибка при получении списка:", err.message);
+    console.error("Ошибка при получении онлайн игроков:", err.message);
     return null;
   }
 }
@@ -45,17 +46,10 @@ async function getPlayerNames() {
 async function getPlayerStats(name) {
   try {
     const url = `https://ddnet.org/players/${encodeURIComponent(name)}/`;
-    const { data } = await axios.get(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.1 Safari/537.36",
-      },
-    });
-
+    const { data } = await axios.get(url);
     const $ = cheerio.load(data);
     const stats = {};
 
-    // Пример: ищем строку "Ranks points: 1234"
     $("table.stats tr").each((_, el) => {
       const key = $(el).find("th").text().trim();
       const val = $(el).find("td").text().trim();
@@ -70,67 +64,173 @@ async function getPlayerStats(name) {
 }
 
 // ============================
+// 📊 Статистика клана (teerank.io)
+// ============================
+async function getClanStatistics() {
+  try {
+    const { data } = await axios.get("https://teerank.io/clan/BKW");
+    const $ = cheerio.load(data);
+    const info = {};
+
+    $("table tr").each((_, el) => {
+      const key = $(el).find("th").text().trim();
+      const val = $(el).find("td").text().trim();
+      if (key && val) info[key] = val;
+    });
+
+    let result = "📊 Статистика клана BKW:\n\n";
+    for (const [key, value] of Object.entries(info)) {
+      result += `🏷️ ${key}: ${value}\n`;
+    }
+
+    return result || "⚠️ Не удалось получить статистику клана.";
+  } catch (err) {
+    console.error("Ошибка при получении статистики клана:", err.message);
+    return "⚠️ Не удалось получить статистику клана.";
+  }
+}
+
+// ============================
+// 🖥️ Список серверов (status.tw)
+// ============================
+async function getServerList() {
+  try {
+    const { data } = await axios.get("https://status.tw/server/list");
+    const $ = cheerio.load(data);
+
+    const servers = [];
+    $(".server-entry").each((_, el) => {
+      const name = $(el).find(".server-name").text().trim();
+      const map = $(el).find(".server-map").text().trim();
+      const players = $(el).find(".server-players").text().trim();
+      const country = $(el).find(".server-flag").attr("title") || "N/A";
+
+      servers.push({ name, map, players, country });
+    });
+
+    if (servers.length === 0) return "⚠️ Не удалось найти сервера.";
+
+    let message = "🖥️ Список серверов:\n\n";
+    for (const s of servers.slice(0, 20)) {
+      message += `🎮 ${s.name}\n🗺️ Карта: ${s.map}\n👥 Игроки: ${s.players}\n🌍 Страна: ${s.country}\n\n`;
+    }
+
+    return message;
+  } catch (err) {
+    console.error("Ошибка при получении серверов:", err.message);
+    return "⚠️ Не удалось получить список серверов.";
+  }
+}
+
+// ============================
 // 🤖 Команды Telegram
 // ============================
 
-// /start
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(
     msg.chat.id,
-    "👋 Привет! Доступные команды:\n\n" +
-      "• /check — список игроков с сайта\n" +
-      "• /duel <ник1> <ник2> — сравнить статистику игроков с ddnet.org"
+    "👋 Привет! Это официальный бот клана BKWORLD.\n\n" +
+      "📋 Команды:\n" +
+      "• /online — список игроков онлайн\n" +
+      "• /compare <ник1> <ник2> — сравнение статистики DDNet\n" +
+      "• /tgk — телеграм-канал\n" +
+      "• /clantag — приписка клана\n" +
+      "• /statistics — статистика клана\n" +
+      "• /serverlist — список серверов\n" +
+      "• /stickers — стикеры клана\n" +
+      "• /skinpack — скин пак DDNet"
   );
 });
 
-// /check
-bot.onText(/\/check/, async (msg) => {
+// /online
+bot.onText(/\/online/, async (msg) => {
   const chatId = msg.chat.id;
-  bot.sendMessage(chatId, "⏳ Проверяю сайт...");
+  bot.sendMessage(chatId, "⏳ Проверяю, кто онлайн...");
 
-  const names = await getPlayerNames();
-
+  const names = await getOnlinePlayers();
   if (!names) return bot.sendMessage(chatId, "⚠️ Не удалось получить список игроков.");
-  if (names.length === 0) return bot.sendMessage(chatId, "😕 Игроков не найдено.");
+  if (names.length === 0) return bot.sendMessage(chatId, "😕 Никто не найден онлайн.");
 
   const text = names.map((n, i) => `${i + 1}. ${n}`).join("\n");
-  bot.sendMessage(chatId, `🎮 Найдено ${names.length} ник(ов):\n\n${text}`);
+  bot.sendMessage(chatId, `🎮 Сейчас онлайн ${names.length} игрок(ов):\n\n${text}`);
 });
 
-// /duel <игрок1> <игрок2>
-bot.onText(/\/duel (.+)/, async (msg, match) => {
+// /compare
+bot.onText(/\/compare (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const args = match[1].split(" ").filter(Boolean);
 
-  if (args.length !== 2) {
-    return bot.sendMessage(
-      chatId,
-      "⚔️ Использование: /duel <ник1> <ник2>\nПример: /duel test player123"
-    );
-  }
+  if (args.length !== 2)
+    return bot.sendMessage(chatId, "⚔️ Использование: /compare <ник1> <ник2>");
 
   const [p1, p2] = args;
   bot.sendMessage(chatId, `⏳ Сравниваю ${p1} и ${p2}...`);
 
   const [s1, s2] = await Promise.all([getPlayerStats(p1), getPlayerStats(p2)]);
-
   if (!s1 || !s2)
     return bot.sendMessage(chatId, "⚠️ Не удалось получить статистику одного из игроков.");
 
-  let text = `⚔️ Duel: ${p1} vs ${p2}\n\n`;
-
-  // Сравниваем только общие поля
+  let text = `⚔️ Сравнение: ${p1} vs ${p2}\n\n`;
   const keys = Object.keys(s1).filter((k) => s2[k]);
-
-  if (keys.length === 0) {
-    text += "❌ Не удалось найти общие параметры для сравнения.";
-  } else {
+  if (keys.length === 0) text += "❌ Общие параметры не найдены.";
+  else {
     for (const key of keys) {
       text += `🏷️ ${key}\n${p1}: ${s1[key]}\n${p2}: ${s2[key]}\n\n`;
     }
   }
-
   bot.sendMessage(chatId, text);
 });
 
-console.log("✅ Бот запущен и ждёт команды в Telegram...");
+// Простые команды
+bot.onText(/\/tgk/, (msg) => bot.sendMessage(msg.chat.id, "📢 Наш Telegram-канал: @BKWORLDCHANNEL"));
+bot.onText(/\/clantag/, (msg) => bot.sendMessage(msg.chat.id, "🏷️ Приписка клана: BKW"));
+bot.onText(/\/stickers/, (msg) => bot.sendMessage(msg.chat.id, "🎨 Стикеры: https://t.me/addstickers/BKWORLDSTIK"));
+
+// /statistics
+bot.onText(/\/statistics/, async (msg) => {
+  bot.sendMessage(msg.chat.id, "📊 Загружаю статистику клана...");
+  const result = await getClanStatistics();
+  bot.sendMessage(msg.chat.id, result);
+});
+
+// /serverlist
+bot.onText(/\/serverlist/, async (msg) => {
+  bot.sendMessage(msg.chat.id, "🖥️ Загружаю список серверов...");
+  const result = await getServerList();
+  bot.sendMessage(msg.chat.id, result);
+});
+
+// /skinpack
+bot.onText(/\/skinpack/, async (msg) => {
+  const chatId = msg.chat.id;
+
+  const instruction = `🧰 *Skin Pack by BKWORLD*  
+
+📦 *Установка:*
+Распаковать скин пак нужно в папку:
+
+🪟 *Windows*  
+\`C:\\Users\\Имя_пользователя\\AppData\\Roaming\\DDNet\\skins\`
+
+📱 *Android*  
+\`Телефон/Android/data/org.ddnet.client/files/user/skins\`
+`;
+
+  const photoPath = path.join(__dirname, "photo_2025-10-30_11-37-29.jpg");
+  const zipPath = path.join(__dirname, "Skin pack by BKWORLD.zip");
+
+  if (!fs.existsSync(photoPath) || !fs.existsSync(zipPath)) {
+    return bot.sendMessage(chatId, "⚠️ Файлы скинпака не найдены на сервере.");
+  }
+
+  await bot.sendPhoto(chatId, photoPath, {
+    caption: instruction,
+    parse_mode: "Markdown",
+  });
+
+  await bot.sendDocument(chatId, zipPath, {
+    caption: "📁 Скин пак для DDNet от клана BKWORLD",
+  });
+});
+
+console.log("✅ Бот запущен и ждёт команды...");
