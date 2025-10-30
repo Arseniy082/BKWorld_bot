@@ -1,6 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import axios from "axios";
-import cheerio from "cheerio";
+import * as cheerio from "cheerio"; // ✅ Исправленный импорт
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -265,3 +265,4 @@ bot.onText(/\/skinpack|🧰 Скинпак/, async (msg) => {
 });
 
 console.log("✅ Бот запущен и ждёт команды...");
+
