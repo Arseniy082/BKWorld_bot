@@ -1,7 +1,7 @@
 {
   "name": "bkworld-bot",
   "version": "1.0.0",
-  "type": "module",   ← вот эта строка обязательна!
+  "type": "module",   
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -13,3 +13,4 @@
     "node-telegram-bot-api": "^0.61.0"
   }
 }
+
