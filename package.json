@@ -1,16 +1,16 @@
 {
   "name": "bkworld-bot",
   "version": "1.0.0",
-  "type": "module",   
+  "description": "Telegram бот клана BKWORLD",
   "main": "index.js",
+  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "axios": "^1.7.3",
+    "axios": "^1.7.0",
     "cheerio": "^1.0.0",
-    "dotenv": "^16.4.5",
-    "node-telegram-bot-api": "^0.61.0"
+    "dotenv": "^16.3.1",
+    "telegraf": "^4.15.0"
   }
 }
-
