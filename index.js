@@ -1,199 +1,142 @@
-import TelegramBot from "node-telegram-bot-api";
-import axios from "axios";
-import * as cheerio from "cheerio";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import dotenv from "dotenv";
-dotenv.config();
+// ===== BKW Telegram Bot =====
+// Версия: 2.0 (с /skinpack)
+// Автор: Nef0r / BKWORLD
 
+import 'dotenv/config';
+import axios from 'axios';
+import * as cheerio from 'cheerio';
+import { Telegraf } from 'telegraf';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const CLAN_URL = process.env.CLAN_URL || 'https://teerank.io/clan/BKW';
+const bot = new Telegraf(BOT_TOKEN);
+
+// ===== Для корректной работы путей =====
 const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
+const __dirname = dirname(__filename);
 
-console.log("✅ Бот BKWORLD запущен!");
+// ===== Функция: извлечение ников с сайта =====
+async function fetchNicknames(url) {
+  try {
+    const { data } = await axios.get(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BKWBot/1.0)' },
+    });
 
-// === /start ===
-bot.onText(/\/start/, (msg) => {
-  const opts = {
-    reply_markup: {
-      keyboard: [
-        ["🎮 Онлайн", "⚔️ Сравнить игроков"],
-        ["📊 Статистика клана", "🖥️ Сервера"],
-        ["📢 TGK", "🏷️ Приписка", "🎨 Стикеры"],
-        ["🧰 Скинпак"]
-      ],
-      resize_keyboard: true,
-    },
-  };
+    const $ = cheerio.load(data);
+    const nicknames = [];
 
-  bot.sendMessage(
-    msg.chat.id,
-    "👋 Привет! Это бот клана *BKWORLD*.\nВыбери команду ниже 👇",
-    { parse_mode: "Markdown", ...opts }
+    $('a[href*="/player/"]').each((_, el) => {
+      const nick = $(el).text().trim();
+      if (
+        nick &&
+        nick.length > 1 &&
+        !nick.toLowerCase().includes('player') &&
+        !nick.toLowerCase().includes('list') &&
+        !/[^a-zA-Zа-яА-Я0-9_\\-]/.test(nick)
+      ) {
+        nicknames.push(nick);
+      }
+    });
+
+    const unique = Array.from(new Set(nicknames));
+    return unique.filter((n) => !/player/i.test(n) && !/list/i.test(n));
+  } catch (err) {
+    console.error('Ошибка при загрузке:', err.message);
+    return [];
+  }
+}
+
+// ===== Команды Telegram =====
+
+// /start
+bot.start((ctx) => {
+  ctx.reply(
+    `👋 Привет, ${ctx.from.first_name}!\n` +
+    `Я бот клана BKW.\n\n` +
+    `📜 Доступные команды:\n` +
+    `/tgk — канал клана\n` +
+    `/clantag — приписка клана\n` +
+    `/statistics — статистика\n` +
+    `/serverlist — список серверов\n` +
+    `/stickers — стикерпак\n` +
+    `/online — проверить, кто в онлайне\n` +
+    `/skinpack — скачать скинпак BKW`
   );
 });
 
-// === /online ===
-bot.onText(/\/online|🎮 Онлайн/, async (msg) => {
-  const chatId = msg.chat.id;
-  await bot.sendMessage(chatId, "⏳ Проверяю сайт...");
+// /tgk
+bot.command('tgk', (ctx) => ctx.reply('@BKWORLDCHANNEL'));
 
-  try {
-    const { data } = await axios.get("https://status.tw/clan/BKW");
-    const $ = cheerio.load(data);
-    const players = [];
+// /clantag
+bot.command('clantag', (ctx) => ctx.reply('Приписка нашего клана — BKW'));
 
-    $("a[href^='/player/']").each((_, el) => {
-      const name = $(el).text().trim();
-      if (name && !/player list/i.test(name)) players.push(name);
-    });
+// /statistics
+bot.command('statistics', (ctx) =>
+  ctx.reply('📊 Статистика клана: https://teerank.io/clan/BKW')
+);
 
-    if (players.length === 0)
-      return bot.sendMessage(chatId, "⚠️ На сайте нет игроков онлайн.");
+// /serverlist
+bot.command('serverlist', (ctx) =>
+  ctx.reply('🖥 Список серверов: https://status.tw/server/list')
+);
 
-    await bot.sendMessage(
-      chatId,
-      `🎮 Найдено ${players.length} ник(ов):\n\n${players.join("\n")}`
+// /stickers
+bot.command('stickers', (ctx) =>
+  ctx.reply('🎨 Стикеры: https://t.me/addstickers/BKWORLDSTIK')
+);
+
+// /online (или /check)
+bot.command(['online', 'check'], async (ctx) => {
+  await ctx.reply('⏳ Проверяю сайт...');
+  const nicknames = await fetchNicknames(CLAN_URL);
+
+  if (nicknames.length === 0) {
+    await ctx.reply('⚠️ Не удалось получить список игроков (возможно, сайт недоступен).');
+  } else {
+    const time = new Date().toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' });
+    await ctx.reply(
+      `🎮 Найдено ${nicknames.length} ник(ов):\n\n${nicknames.join('\n')}\n\n🕒 Проверено: ${time}`
     );
-  } catch (err) {
-    console.error(err);
-    bot.sendMessage(chatId, "⚠️ Не удалось получить список игроков.");
   }
 });
 
-// === /compare ===
-bot.onText(/\/compare (.+) (.+)|⚔️ Сравнить игроков/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const player1 = match?.[1];
-  const player2 = match?.[2];
-
-  if (!player1 || !player2)
-    return bot.sendMessage(chatId, "⚔️ Использование: /compare <ник1> <ник2>");
-
-  await bot.sendMessage(chatId, `⚔️ Сравниваю ${player1} и ${player2}...`);
-
+// /skinpack — отправка инструкции и архива
+bot.command('skinpack', async (ctx) => {
   try {
-    const p1 = await getPlayerStats(player1);
-    const p2 = await getPlayerStats(player2);
+    const imagePath = join(__dirname, 'photo_2025-10-30_11-37-29.jpg');
+    const zipPath = join(__dirname, 'Skin pack by BKWORLD.zip');
 
-    if (!p1 || !p2)
-      return bot.sendMessage(
-        chatId,
-        "⚠️ Не удалось получить статистику одного из игроков."
-      );
+    if (!fs.existsSync(imagePath) || !fs.existsSync(zipPath)) {
+      return ctx.reply('⚠️ Файлы скинпака не найдены на сервере.');
+    }
 
-    const result =
-      `📊 Сравнение игроков:\n\n` +
-      `👤 ${player1} — Очки: ${p1.points}, Ранг: ${p1.rank}\n` +
-      `👤 ${player2} — Очки: ${p2.points}, Ранг: ${p2.rank}\n\n` +
-      (p1.points > p2.points
-        ? `🏆 ${player1} сильнее!`
-        : p2.points > p1.points
-        ? `🏆 ${player2} сильнее!`
-        : "🤝 Равны по очкам!");
+    // 1️⃣ Отправляем фото-инструкцию
+    await ctx.replyWithPhoto({ source: imagePath }, { caption: '📦 Инструкция по установке скинпака BKW' });
 
-    bot.sendMessage(chatId, result);
+    // 2️⃣ Текстовая инструкция
+    await ctx.reply(
+      `🧭 **Как установить скинпак:**\n\n` +
+      `**Windows:**\n📂 \`C:\\Users\\Имя_пользователя\\AppData\\Roaming\\DDNet\\skins\`\n\n` +
+      `**Android:**\n📂 \`Телефон/Android/data/org.ddnet.client/files/user/skins\`\n\n` +
+      `После распаковки перезапусти игру — скины появятся в списке.`
+    );
+
+    // 3️⃣ ZIP-файл
+    await ctx.replyWithDocument({ source: zipPath, filename: 'Skin pack by BKWORLD.zip' });
+
   } catch (err) {
-    console.error(err);
-    bot.sendMessage(chatId, "⚠️ Ошибка при сравнении игроков.");
+    console.error('Ошибка при отправке скинпака:', err);
+    ctx.reply('❌ Произошла ошибка при отправке скинпака.');
   }
 });
 
-// === /statistics ===
-bot.onText(/\/statistics|📊 Статистика клана/, async (msg) => {
-  const chatId = msg.chat.id;
-  await bot.sendMessage(chatId, "📊 Загружаю статистику клана...");
+// ===== Запуск бота =====
+bot.launch();
+console.log('✅ Бот запущен и готов к работе.');
 
-  try {
-    const { data } = await axios.get("https://api.teerank.io/clan/BKW");
-
-    if (!data || !data.stats)
-      return bot.sendMessage(chatId, "⚠️ Не удалось получить данные клана.");
-
-    const stats = data.stats;
-    const message =
-      `📊 *Статистика клана BKW:*\n\n` +
-      `🏆 Ранг: ${stats.rank}\n` +
-      `👥 Участников: ${stats.members}\n` +
-      `🕹️ Очки: ${stats.points}\n` +
-      `📈 Средний рейтинг: ${stats.average_rank}`;
-
-    bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
-  } catch (err) {
-    console.error(err);
-    bot.sendMessage(chatId, "⚠️ Не удалось загрузить статистику клана.");
-  }
-});
-
-// === /serverlist ===
-bot.onText(/\/serverlist|🖥️ Сервера/, async (msg) => {
-  const chatId = msg.chat.id;
-  await bot.sendMessage(chatId, "🖥️ Загружаю список серверов...");
-
-  try {
-    const { data } = await axios.get("https://status.tw/api/server/list");
-
-    if (!Array.isArray(data) || data.length === 0)
-      return bot.sendMessage(chatId, "⚠️ Не удалось найти сервера.");
-
-    let message = "🖥️ *Список серверов:*\n\n";
-    data.slice(0, 10).forEach((s) => {
-      message += `🎮 ${s.name}\n🗺️ ${s.map}\n👥 ${s.clients}/${s.maxclients}\n🌍 ${s.country}\n\n`;
-    });
-
-    bot.sendMessage(chatId, message, { parse_mode: "Markdown" });
-  } catch (err) {
-    console.error(err);
-    bot.sendMessage(chatId, "⚠️ Не удалось получить список серверов.");
-  }
-});
-
-// === /tgk ===
-bot.onText(/\/tgk|📢 TGK/, (msg) =>
-  bot.sendMessage(msg.chat.id, "📢 Наш Telegram канал: @BKWORLDCHANNEL")
-);
-
-// === /clantag ===
-bot.onText(/\/clantag|🏷️ Приписка/, (msg) =>
-  bot.sendMessage(msg.chat.id, "🏷️ Приписка клана: BKW")
-);
-
-// === /stickers ===
-bot.onText(/\/stickers|🎨 Стикеры/, (msg) =>
-  bot.sendMessage(msg.chat.id, "🎨 Стикеры клана: https://t.me/addstickers/BKWORLDSTIK")
-);
-
-// === /skinpack ===
-bot.onText(/\/skinpack|🧰 Скинпак/, async (msg) => {
-  const chatId = msg.chat.id;
-  const photoPath = path.join(__dirname, "photo_2025-10-30_11-37-29.jpg");
-  const filePath = path.join(__dirname, "Skin pack by BKWORLD.zip");
-
-  const caption =
-    "🧥 *Skin Pack by BKWORLD*\n\n" +
-    "📦 Распаковать скин пак нужно в папку:\n\n" +
-    "*Windows:*\nC:\\Users\\Имя_пользователя\\AppData\\Roaming\\DDNet\\skins\n\n" +
-    "*Android:*\nТелефон/Android/data/org.ddnet.client/files/user/skins";
-
-  if (!fs.existsSync(photoPath) || !fs.existsSync(filePath))
-    return bot.sendMessage(chatId, "⚠️ Файлы скинпака не найдены.");
-
-  await bot.sendPhoto(chatId, photoPath, { caption, parse_mode: "Markdown" });
-  await bot.sendDocument(chatId, filePath);
-});
-
-// === Функция статистики игрока ===
-async function getPlayerStats(name) {
-  try {
-    const { data } = await axios.get(`https://ddnet.org/players/${name}/`);
-    const $ = cheerio.load(data);
-
-    const points = $('td:contains("Points")').next().text().trim() || "0";
-    const rank = $('td:contains("Rank")').next().text().trim() || "N/A";
-
-    return { points: parseInt(points) || 0, rank };
-  } catch {
-    return null;
-  }
-}
+// ===== Корректная остановка =====
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
