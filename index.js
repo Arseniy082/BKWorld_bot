@@ -78,7 +78,7 @@ async function getClanStatistics() {
       if (key && val) info[key] = val;
     });
 
-    let result = "📊 Статистика клана BKW:\n\n";
+    let result = "📊 *Статистика клана BKW:*\n\n";
     for (const [key, value] of Object.entries(info)) {
       result += `🏷️ ${key}: ${value}\n`;
     }
@@ -110,7 +110,7 @@ async function getServerList() {
 
     if (servers.length === 0) return "⚠️ Не удалось найти сервера.";
 
-    let message = "🖥️ Список серверов:\n\n";
+    let message = "🖥️ *Список серверов:*\n\n";
     for (const s of servers.slice(0, 20)) {
       message += `🎮 ${s.name}\n🗺️ Карта: ${s.map}\n👥 Игроки: ${s.players}\n🌍 Страна: ${s.country}\n\n`;
     }
@@ -127,23 +127,30 @@ async function getServerList() {
 // ============================
 
 bot.onText(/\/start/, (msg) => {
+  const options = {
+    reply_markup: {
+      keyboard: [
+        ["🎮 Онлайн", "⚔️ Сравнить игроков"],
+        ["📊 Статистика клана", "🖥️ Сервера"],
+        ["🎨 Стикеры", "🏷️ Приписка", "📢 TGK"],
+        ["🧰 Скинпак"],
+      ],
+      resize_keyboard: true,
+    },
+  };
+
   bot.sendMessage(
     msg.chat.id,
-    "👋 Привет! Это официальный бот клана BKWORLD.\n\n" +
-      "📋 Команды:\n" +
-      "• /online — список игроков онлайн\n" +
-      "• /compare <ник1> <ник2> — сравнение статистики DDNet\n" +
-      "• /tgk — телеграм-канал\n" +
-      "• /clantag — приписка клана\n" +
-      "• /statistics — статистика клана\n" +
-      "• /serverlist — список серверов\n" +
-      "• /stickers — стикеры клана\n" +
-      "• /skinpack — скин пак DDNet"
+    "👋 Привет! Это официальный бот клана *BKWORLD*.\n\n" +
+      "Выбери действие с кнопок ниже 👇",
+    { parse_mode: "Markdown", ...options }
   );
 });
 
-// /online
-bot.onText(/\/online/, async (msg) => {
+// ============================
+// 🎮 Онлайн
+// ============================
+bot.onText(/\/online|🎮 Онлайн/, async (msg) => {
   const chatId = msg.chat.id;
   bot.sendMessage(chatId, "⏳ Проверяю, кто онлайн...");
 
@@ -155,7 +162,9 @@ bot.onText(/\/online/, async (msg) => {
   bot.sendMessage(chatId, `🎮 Сейчас онлайн ${names.length} игрок(ов):\n\n${text}`);
 });
 
-// /compare
+// ============================
+// ⚔️ Сравнение игроков
+// ============================
 bot.onText(/\/compare (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const args = match[1].split(" ").filter(Boolean);
@@ -170,7 +179,7 @@ bot.onText(/\/compare (.+)/, async (msg, match) => {
   if (!s1 || !s2)
     return bot.sendMessage(chatId, "⚠️ Не удалось получить статистику одного из игроков.");
 
-  let text = `⚔️ Сравнение: ${p1} vs ${p2}\n\n`;
+  let text = `⚔️ *Сравнение:* ${p1} vs ${p2}\n\n`;
   const keys = Object.keys(s1).filter((k) => s2[k]);
   if (keys.length === 0) text += "❌ Общие параметры не найдены.";
   else {
@@ -178,30 +187,52 @@ bot.onText(/\/compare (.+)/, async (msg, match) => {
       text += `🏷️ ${key}\n${p1}: ${s1[key]}\n${p2}: ${s2[key]}\n\n`;
     }
   }
-  bot.sendMessage(chatId, text);
+  bot.sendMessage(chatId, text, { parse_mode: "Markdown" });
 });
 
-// Простые команды
-bot.onText(/\/tgk/, (msg) => bot.sendMessage(msg.chat.id, "📢 Наш Telegram-канал: @BKWORLDCHANNEL"));
-bot.onText(/\/clantag/, (msg) => bot.sendMessage(msg.chat.id, "🏷️ Приписка клана: BKW"));
-bot.onText(/\/stickers/, (msg) => bot.sendMessage(msg.chat.id, "🎨 Стикеры: https://t.me/addstickers/BKWORLDSTIK"));
+bot.onText(/⚔️ Сравнить игроков/, (msg) =>
+  bot.sendMessage(
+    msg.chat.id,
+    "✍️ Введи команду в формате:\n`/compare Ник1 Ник2`",
+    { parse_mode: "Markdown" }
+  )
+);
 
-// /statistics
-bot.onText(/\/statistics/, async (msg) => {
+// ============================
+// Простые команды
+// ============================
+bot.onText(/\/tgk|📢 TGK/, (msg) =>
+  bot.sendMessage(msg.chat.id, "📢 Наш Telegram-канал: @BKWORLDCHANNEL")
+);
+bot.onText(/\/clantag|🏷️ Приписка/, (msg) =>
+  bot.sendMessage(msg.chat.id, "🏷️ Приписка клана: BKW")
+);
+bot.onText(/\/stickers|🎨 Стикеры/, (msg) =>
+  bot.sendMessage(msg.chat.id, "🎨 Стикеры: https://t.me/addstickers/BKWORLDSTIK")
+);
+
+// ============================
+// 📊 Статистика
+// ============================
+bot.onText(/\/statistics|📊 Статистика клана/, async (msg) => {
   bot.sendMessage(msg.chat.id, "📊 Загружаю статистику клана...");
   const result = await getClanStatistics();
-  bot.sendMessage(msg.chat.id, result);
+  bot.sendMessage(msg.chat.id, result, { parse_mode: "Markdown" });
 });
 
-// /serverlist
-bot.onText(/\/serverlist/, async (msg) => {
+// ============================
+// 🖥️ Серверы
+// ============================
+bot.onText(/\/serverlist|🖥️ Сервера/, async (msg) => {
   bot.sendMessage(msg.chat.id, "🖥️ Загружаю список серверов...");
   const result = await getServerList();
-  bot.sendMessage(msg.chat.id, result);
+  bot.sendMessage(msg.chat.id, result, { parse_mode: "Markdown" });
 });
 
-// /skinpack
-bot.onText(/\/skinpack/, async (msg) => {
+// ============================
+// 🧰 Скинпак
+// ============================
+bot.onText(/\/skinpack|🧰 Скинпак/, async (msg) => {
   const chatId = msg.chat.id;
 
   const instruction = `🧰 *Skin Pack by BKWORLD*  
