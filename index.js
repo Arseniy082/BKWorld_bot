@@ -1,9 +1,7 @@
-import TelegramBot from "node-telegram-bot-api";
-import axios from "axios";
-import * as cheerio from "cheerio";
-import dotenv from "dotenv";
-
-dotenv.config();
+const TelegramBot = require("node-telegram-bot-api");
+const axios = require("axios");
+const cheerio = require("cheerio");
+require("dotenv").config();
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const url = process.env.CLAN_URL;
@@ -30,7 +28,7 @@ async function getPlayerNames() {
 
     const $ = cheerio.load(data);
 
-    // Находим все ссылки на игроков
+    // Ищем все ссылки на игроков
     const names = [];
     $("a[href^='/player/']").each((i, el) => {
       const name = $(el).text().trim();
@@ -46,13 +44,13 @@ async function getPlayerNames() {
   }
 }
 
-// Обработка команды /start
+// Команда /start
 bot.onText(/\/start/, async (msg) => {
   const chatId = msg.chat.id;
-  await bot.sendMessage(chatId, "👋 Привет! Отправь /check чтобы проверить игроков.");
+  await bot.sendMessage(chatId, "👋 Привет! Отправь /check, чтобы проверить игроков.");
 });
 
-// Обработка команды /check
+// Команда /check
 bot.onText(/\/check/, async (msg) => {
   const chatId = msg.chat.id;
   await bot.sendMessage(chatId, "⏳ Проверяю сайт...");
