@@ -1,6 +1,6 @@
 import TelegramBot from "node-telegram-bot-api";
 import axios from "axios";
-import * as cheerio from "cheerio"; // ✅ Исправленный импорт
+import * as cheerio from "cheerio"; // Исправленный импорт
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
@@ -20,7 +20,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // ============================
-// 📋 Получение списка игроков (онлайн)
+// 🎮 Онлайн игроки
 // ============================
 async function getOnlinePlayers() {
   try {
@@ -64,26 +64,22 @@ async function getPlayerStats(name) {
 }
 
 // ============================
-// 📊 Статистика клана (teerank.io)
+// 📊 Статистика клана (через API teerank)
 // ============================
 async function getClanStatistics() {
   try {
-    const { data } = await axios.get("https://teerank.io/clan/BKW");
-    const $ = cheerio.load(data);
-    const info = {};
+    const { data } = await axios.get("https://api.teerank.io/clan/BKW");
+    if (!data || !data.stats) return "⚠️ Не удалось получить статистику клана.";
 
-    $("table tr").each((_, el) => {
-      const key = $(el).find("th").text().trim();
-      const val = $(el).find("td").text().trim();
-      if (key && val) info[key] = val;
-    });
-
-    let result = "📊 *Статистика клана BKW:*\n\n";
-    for (const [key, value] of Object.entries(info)) {
-      result += `🏷️ ${key}: ${value}\n`;
-    }
-
-    return result || "⚠️ Не удалось получить статистику клана.";
+    const stats = data.stats;
+    return (
+      `📊 *Статистика клана BKW:*\n\n` +
+      `🏆 Ранг: ${stats.rank}\n` +
+      `👥 Участников: ${stats.members}\n` +
+      `🌍 Страна: ${stats.country}\n` +
+      `🕹️ Очки: ${stats.points}\n` +
+      `📈 Топ-карта: ${stats.top_map || "неизвестно"}`
+    );
   } catch (err) {
     console.error("Ошибка при получении статистики клана:", err.message);
     return "⚠️ Не удалось получить статистику клана.";
@@ -91,29 +87,18 @@ async function getClanStatistics() {
 }
 
 // ============================
-// 🖥️ Список серверов (status.tw)
+// 🖥️ Список серверов (через API status.tw)
 // ============================
 async function getServerList() {
   try {
-    const { data } = await axios.get("https://status.tw/server/list");
-    const $ = cheerio.load(data);
-
-    const servers = [];
-    $(".server-entry").each((_, el) => {
-      const name = $(el).find(".server-name").text().trim();
-      const map = $(el).find(".server-map").text().trim();
-      const players = $(el).find(".server-players").text().trim();
-      const country = $(el).find(".server-flag").attr("title") || "N/A";
-
-      servers.push({ name, map, players, country });
-    });
-
-    if (servers.length === 0) return "⚠️ Не удалось найти сервера.";
+    const { data } = await axios.get("https://status.tw/api/server/list");
+    if (!Array.isArray(data) || data.length === 0)
+      return "⚠️ Не удалось получить список серверов.";
 
     let message = "🖥️ *Список серверов:*\n\n";
-    for (const s of servers.slice(0, 20)) {
-      message += `🎮 ${s.name}\n🗺️ Карта: ${s.map}\n👥 Игроки: ${s.players}\n🌍 Страна: ${s.country}\n\n`;
-    }
+    data.slice(0, 15).forEach((s) => {
+      message += `🎮 ${s.name}\n🗺️ Карта: ${s.map}\n👥 Игроки: ${s.clients}/${s.maxclients}\n🌍 Страна: ${s.country || "N/A"}\n\n`;
+    });
 
     return message;
   } catch (err) {
@@ -125,7 +110,6 @@ async function getServerList() {
 // ============================
 // 🤖 Команды Telegram
 // ============================
-
 bot.onText(/\/start/, (msg) => {
   const options = {
     reply_markup: {
@@ -265,4 +249,3 @@ bot.onText(/\/skinpack|🧰 Скинпак/, async (msg) => {
 });
 
 console.log("✅ Бот запущен и ждёт команды...");
-
