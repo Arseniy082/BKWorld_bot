@@ -11,8 +11,31 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
-// === Команда /online ===
-bot.onText(/\/online/, async (msg) => {
+console.log("✅ Бот BKWORLD запущен!");
+
+// === /start ===
+bot.onText(/\/start/, (msg) => {
+  const opts = {
+    reply_markup: {
+      keyboard: [
+        ["🎮 Онлайн", "⚔️ Сравнить игроков"],
+        ["📊 Статистика клана", "🖥️ Сервера"],
+        ["📢 TGK", "🏷️ Приписка", "🎨 Стикеры"],
+        ["🧰 Скинпак"]
+      ],
+      resize_keyboard: true,
+    },
+  };
+
+  bot.sendMessage(
+    msg.chat.id,
+    "👋 Привет! Это бот клана *BKWORLD*.\nВыбери команду ниже 👇",
+    { parse_mode: "Markdown", ...opts }
+  );
+});
+
+// === /online ===
+bot.onText(/\/online|🎮 Онлайн/, async (msg) => {
   const chatId = msg.chat.id;
   await bot.sendMessage(chatId, "⏳ Проверяю сайт...");
 
@@ -21,17 +44,9 @@ bot.onText(/\/online/, async (msg) => {
     const $ = cheerio.load(data);
     const players = [];
 
-    $("div").each((i, el) => {
-      const text = $(el).text().trim();
-      if (
-        text &&
-        !text.includes("Player list") &&
-        !text.includes("Players") &&
-        text.length > 1 &&
-        text.length < 30
-      ) {
-        players.push(text);
-      }
+    $("a[href^='/player/']").each((_, el) => {
+      const name = $(el).text().trim();
+      if (name && !/player list/i.test(name)) players.push(name);
     });
 
     if (players.length === 0)
@@ -47,11 +62,15 @@ bot.onText(/\/online/, async (msg) => {
   }
 });
 
-// === Команда /compare ===
-bot.onText(/\/compare (.+) (.+)/, async (msg, match) => {
+// === /compare ===
+bot.onText(/\/compare (.+) (.+)|⚔️ Сравнить игроков/, async (msg, match) => {
   const chatId = msg.chat.id;
-  const player1 = match[1];
-  const player2 = match[2];
+  const player1 = match?.[1];
+  const player2 = match?.[2];
+
+  if (!player1 || !player2)
+    return bot.sendMessage(chatId, "⚔️ Использование: /compare <ник1> <ник2>");
+
   await bot.sendMessage(chatId, `⚔️ Сравниваю ${player1} и ${player2}...`);
 
   try {
@@ -81,8 +100,8 @@ bot.onText(/\/compare (.+) (.+)/, async (msg, match) => {
   }
 });
 
-// === Команда /statistics ===
-bot.onText(/\/statistics/, async (msg) => {
+// === /statistics ===
+bot.onText(/\/statistics|📊 Статистика клана/, async (msg) => {
   const chatId = msg.chat.id;
   await bot.sendMessage(chatId, "📊 Загружаю статистику клана...");
 
@@ -107,8 +126,8 @@ bot.onText(/\/statistics/, async (msg) => {
   }
 });
 
-// === Команда /serverlist ===
-bot.onText(/\/serverlist/, async (msg) => {
+// === /serverlist ===
+bot.onText(/\/serverlist|🖥️ Сервера/, async (msg) => {
   const chatId = msg.chat.id;
   await bot.sendMessage(chatId, "🖥️ Загружаю список серверов...");
 
@@ -130,8 +149,23 @@ bot.onText(/\/serverlist/, async (msg) => {
   }
 });
 
-// === Команда /skinpack ===
-bot.onText(/\/skinpack/, async (msg) => {
+// === /tgk ===
+bot.onText(/\/tgk|📢 TGK/, (msg) =>
+  bot.sendMessage(msg.chat.id, "📢 Наш Telegram канал: @BKWORLDCHANNEL")
+);
+
+// === /clantag ===
+bot.onText(/\/clantag|🏷️ Приписка/, (msg) =>
+  bot.sendMessage(msg.chat.id, "🏷️ Приписка клана: BKW")
+);
+
+// === /stickers ===
+bot.onText(/\/stickers|🎨 Стикеры/, (msg) =>
+  bot.sendMessage(msg.chat.id, "🎨 Стикеры клана: https://t.me/addstickers/BKWORLDSTIK")
+);
+
+// === /skinpack ===
+bot.onText(/\/skinpack|🧰 Скинпак/, async (msg) => {
   const chatId = msg.chat.id;
   const photoPath = path.join(__dirname, "photo_2025-10-30_11-37-29.jpg");
   const filePath = path.join(__dirname, "Skin pack by BKWORLD.zip");
@@ -142,15 +176,14 @@ bot.onText(/\/skinpack/, async (msg) => {
     "*Windows:*\nC:\\Users\\Имя_пользователя\\AppData\\Roaming\\DDNet\\skins\n\n" +
     "*Android:*\nТелефон/Android/data/org.ddnet.client/files/user/skins";
 
-  await bot.sendPhoto(chatId, photoPath, {
-    caption,
-    parse_mode: "Markdown",
-  });
+  if (!fs.existsSync(photoPath) || !fs.existsSync(filePath))
+    return bot.sendMessage(chatId, "⚠️ Файлы скинпака не найдены.");
 
+  await bot.sendPhoto(chatId, photoPath, { caption, parse_mode: "Markdown" });
   await bot.sendDocument(chatId, filePath);
 });
 
-// === Вспомогательная функция для /compare ===
+// === Функция статистики игрока ===
 async function getPlayerStats(name) {
   try {
     const { data } = await axios.get(`https://ddnet.org/players/${name}/`);
