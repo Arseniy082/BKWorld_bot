@@ -200,3 +200,16 @@ console.log('✅ Бот запущен и готов к работе.');
 // ===== Корректная остановка =====
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+// ===== Минимальный веб-сервер для Render =====
+import express from "express";
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("✅ BKW Bot is running and alive!");
+});
+
+app.listen(PORT, () => {
+  console.log(`🌐 Web server running on port ${PORT}`);
+});
